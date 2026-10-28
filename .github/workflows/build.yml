@@ -29,19 +29,22 @@ jobs:
             git clone --depth 1 https://github.com/ggml-org/llama.cpp.git app/src/main/cpp/llama.cpp
           fi
 
-      - name: Kök Gradle Dosyalarını Otomatik Oluştur
+      - name: Kök Gradle ve Wrapper Dosyalarını Otomatik Oluştur
         run: |
-          # Kök build.gradle.kts
+          # 1. Kök build.gradle.kts
           echo 'plugins {' > build.gradle.kts
           echo '    id("com.android.application") version "8.5.2" apply false' >> build.gradle.kts
           echo '    id("org.jetbrains.kotlin.android") version "1.9.24" apply false' >> build.gradle.kts
           echo '}' >> build.gradle.kts
 
-          # Kök settings.gradle.kts
+          # 2. Kök settings.gradle.kts
           echo 'pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }' > settings.gradle.kts
           echo 'dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }' >> settings.gradle.kts
           echo 'rootProject.name = "LFM3AudioTTS"' >> settings.gradle.kts
           echo 'include(":app")' >> settings.gradle.kts
+
+          # 3. Gradle Wrapper'ı (gradlew) Sistemden Üret
+          gradle wrapper --gradle-version 8.9
 
       - name: APK Derle
         run: |
