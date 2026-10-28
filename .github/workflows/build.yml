@@ -5,7 +5,6 @@ on:
 
 jobs:
   build-apk:
-  
     runs-on: ubuntu-latest
     steps:
       - name: Depoyu İndir
@@ -30,21 +29,26 @@ jobs:
             git clone --depth 1 https://github.com/ggml-org/llama.cpp.git app/src/main/cpp/llama.cpp
           fi
 
-      - name: Proje Yapılandırma Dosyalarını Zorunlu Oluştur
+      - name: Proje ve Gradle Özellik Dosyalarını Oluştur
         run: |
-          # 1. Kök build.gradle.kts
+          # 1. gradle.properties (AndroidX ve SDK uyarı çözümü için kritik)
+          echo 'android.useAndroidX=true' > gradle.properties
+          echo 'android.enableJetifier=true' >> gradle.properties
+          echo 'android.suppressUnsupportedCompileSdk=35' >> gradle.properties
+
+          # 2. Kök build.gradle.kts
           echo 'plugins {' > build.gradle.kts
           echo '    id("com.android.application") version "8.5.2" apply false' >> build.gradle.kts
           echo '    id("org.jetbrains.kotlin.android") version "1.9.24" apply false' >> build.gradle.kts
           echo '}' >> build.gradle.kts
 
-          # 2. Kök settings.gradle.kts
+          # 3. Kök settings.gradle.kts
           echo 'pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }' > settings.gradle.kts
           echo 'dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }' >> settings.gradle.kts
           echo 'rootProject.name = "LFM3AudioTTS"' >> settings.gradle.kts
           echo 'include(":app")' >> settings.gradle.kts
 
-          # 3. app/build.gradle.kts
+          # 4. app/build.gradle.kts
           mkdir -p app
           echo 'plugins {' > app/build.gradle.kts
           echo '    id("com.android.application")' >> app/build.gradle.kts
