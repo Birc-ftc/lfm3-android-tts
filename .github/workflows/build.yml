@@ -1,4 +1,3 @@
-yaml
 name: Build LFM3 Audio TTS APK
 
 on:
@@ -35,4 +34,292 @@ jobs:
           gradle-version: "8.9"
 
       # 4. Android SDK paketlerini doğrudan kur.
-      # setup-android eylemi kullanılmadığı için eski "tools
+      # setup-android eylemi kullanılmadığı için eski "tools"
+      # paketini arama hatasından kaçınılır.
+      - name: Android SDK paketlerini kur
+        shell: bash
+        run: |
+          set -eu
+
+          SDK="${ANDROID_HOME}"
+          echo "Android SDK: $SDK"
+
+          if [ ! -d "$SDK/cmdline-tools" ]; then
+            echo "::error::Android command-line tools bulunamadı: $SDK"
+            exit 1
+          fi
+
+          SDKMANAGER="$(find "$SDK/cmdline-tools" \
+            -type f -name sdkmanager | sort -V | tail -n 1)"
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager bulunamadı"
+            exit 1
+          fi
+
+          echo "sdkmanager: $SDKMANAGER"
+
+          set +e
+          yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses
+          LICENSE_STATUS=${PIPESTATUS[1]}
+          set -e
+
+          if [ "$LICENSE_STATUS" -ne 0 ]; then
+            echo "::error::Android SDK lisansları kabul edilemedi"
+            exit 1
+          fi
+
+          "$SDKMANAGER" --sdk_root="$SDK" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.0.12077973" \
+            "cmake;3.22.1"
+
+      # 5. llama.cpp kaynak kodu
+      - name: llama.cpp indir
+        shell: bash
+        run: |
+          set -eu
+
+          mkdir -p app/src/main/cpp
+
+          git clone --depth 1 \
+            https://github.com/ggml-org/llama.cpp.git \
+            app/src/main/cpp/llama.cpp
+
+          git -C app/src/main/cpp/llama.cpp log -1 --oneline
+
+      # 6. Proje dosyalarını oluştur
+      - name: Android proje dosyalarını oluştur
+        shell: bash
+        run: |
+          set -eu
+
+          mkdir -p \
+            app/src/main/cpp \
+            app/src/main/java/com/liquidai/lfmtts
+
+          cat > gradle.properties <<'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          org.gradle.parallel=false
+          EOF
+
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(
+                  RepositoriesMode.FAIL_ON_PROJECT_REPOS
+              )
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "LFM3AudioTTS"
+          include(":app")
+          EOF
+
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          EOF
+
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.liquidai.lfmtts"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "com.liquidai.lfmtts"
+                  minSdk = 29
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "1.0"
+
+                  ndk {
+                      abiFilters += "arm64-v8a"
+                  }
+
+                  externalNativeBuild {
+                      cmake {
+                          cppFlags += "-std=c++17"
+                      }
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+
+              externalNativeBuild {
+                  cmake {
+                      path = file("src/main/cpp/CMakeLists.txt")
+                      version = "3.22.1"
+                  }
+              }
+          }
+
+          dependencies {
+              implementation("androidx.appcompat:appcompat:1.7.0")
+              implementation("androidx.core:core-ktx:1.13.1")
+          }
+          EOF
+
+          # 7. CMake yapılandırması
+          cat > app/src/main/cpp/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.22.1)
+          project(lfm3_android LANGUAGES C CXX)
+
+          set(CMAKE_C_STANDARD 11)
+          set(CMAKE_CXX_STANDARD 17)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+          set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
+          set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
+          set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
+          set(GGML_CUDA OFF CACHE BOOL "" FORCE)
+
+          set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+          set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+          set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+
+          add_subdirectory(llama.cpp)
+          EOF
+
+          # 8. Başlangıç ekranı
+          cat > app/src/main/java/com/liquidai/lfmtts/MainActivity.kt <<'EOF'
+          package com.liquidai.lfmtts
+
+          import android.app.Activity
+          import android.os.Bundle
+          import android.graphics.Typeface
+          import android.view.Gravity
+          import android.widget.LinearLayout
+          import android.widget.ScrollView
+          import android.widget.TextView
+
+          class MainActivity : Activity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+
+                  val content = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(32, 48, 32, 32)
+                  }
+
+                  val title = TextView(this).apply {
+                      text = "LFM3 Audio TTS"
+                      textSize = 28f
+                      typeface = Typeface.DEFAULT_BOLD
+                  }
+
+                  val status = TextView(this).apply {
+                      text = """
+                          |Android uygulaması açıldı.
+                          |
+                          |Hedef cihaz: ARM64
+                          |Hedef diller: Türkçe ve İngilizce
+                          |
+                          |Model motoru ve ses üretimi henüz
+                          |bu başlangıç ekranına bağlanmadı.
+                      """.trimMargin()
+                      textSize = 17f
+                      setPadding(0, 24, 0, 0)
+                  }
+
+                  content.addView(title)
+                  content.addView(status)
+
+                  setContentView(ScrollView(this).apply {
+                      addView(content)
+                  })
+              }
+          }
+          EOF
+
+          # 9. AndroidManifest.xml
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <application
+                  android:allowBackup="false"
+                  android:label="LFM3 Audio TTS"
+                  android:supportsRtl="true"
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+
+                  </activity>
+              </application>
+
+          </manifest>
+          EOF
+
+      # 10. Gradle Wrapper oluştur
+      - name: Gradle Wrapper oluştur
+        run: gradle wrapper --gradle-version 8.9
+
+      # 11. Android APK derle
+      - name: Debug APK derle
+        run: |
+          chmod +x ./gradlew
+          ./gradlew \
+            --no-daemon \
+            --stacktrace \
+            assembleDebug
+
+      # 12. APK dosyasını doğrula
+      - name: APK çıktısını kontrol et
+        shell: bash
+        run: |
+          set -eu
+
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -s "$APK" ]; then
+            echo "::error::APK oluşturulamadı: $APK"
+            exit 1
+          fi
+
+          ls -lh "$APK"
+          sha256sum "$APK"
+
+      # 13. APK'yı Actions artifact olarak yükle
+      - name: APK'yı yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: LFM3-TTS-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
