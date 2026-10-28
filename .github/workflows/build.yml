@@ -29,9 +29,9 @@ jobs:
             git clone --depth 1 https://github.com/ggml-org/llama.cpp.git app/src/main/cpp/llama.cpp
           fi
 
-      - name: Proje ve Gradle Özellik Dosyalarını Oluştur
+      - name: Proje Dosyalarını ve Manifesti Otomatik Oluştur
         run: |
-          # 1. gradle.properties (AndroidX ve SDK uyarı çözümü için kritik)
+          # 1. gradle.properties
           echo 'android.useAndroidX=true' > gradle.properties
           echo 'android.enableJetifier=true' >> gradle.properties
           echo 'android.suppressUnsupportedCompileSdk=35' >> gradle.properties
@@ -71,6 +71,14 @@ jobs:
           echo '    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }' >> app/build.gradle.kts
           echo '}' >> app/build.gradle.kts
           echo 'dependencies { implementation("androidx.appcompat:appcompat:1.7.0"); implementation("androidx.core:core-ktx:1.13.1") }' >> app/build.gradle.kts
+
+          # 5. AndroidManifest.xml (Eksik olan dosya)
+          mkdir -p app/src/main
+          echo '<?xml version="1.0" encoding="utf-8"?>' > app/src/main/AndroidManifest.xml
+          echo '<manifest xmlns:android="http://schemas.android.com/apk/res/android">' >> app/src/main/AndroidManifest.xml
+          echo '    <application android:allowBackup="true" android:label="LFM3 TTS" android:supportsRtl="true">' >> app/src/main/AndroidManifest.xml
+          echo '    </application>' >> app/src/main/AndroidManifest.xml
+          echo '</manifest>' >> app/src/main/AndroidManifest.xml
 
       - name: Gradle Wrapper Başlat ve APK Derle
         run: |
