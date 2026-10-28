@@ -29,7 +29,7 @@ jobs:
             git clone --depth 1 https://github.com/ggml-org/llama.cpp.git app/src/main/cpp/llama.cpp
           fi
 
-      - name: Kök Gradle ve Wrapper Dosyalarını Otomatik Oluştur
+      - name: Proje Yapılandırma Dosyalarını Zorunlu Oluştur
         run: |
           # 1. Kök build.gradle.kts
           echo 'plugins {' > build.gradle.kts
@@ -37,17 +37,36 @@ jobs:
           echo '    id("org.jetbrains.kotlin.android") version "1.9.24" apply false' >> build.gradle.kts
           echo '}' >> build.gradle.kts
 
-          # 2. Kök settings.gradle.kts
+          # 2. Kök settings.gradle.kts (Modülü sisteme bağlayan kritik dosya)
           echo 'pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }' > settings.gradle.kts
           echo 'dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }' >> settings.gradle.kts
           echo 'rootProject.name = "LFM3AudioTTS"' >> settings.gradle.kts
           echo 'include(":app")' >> settings.gradle.kts
 
-          # 3. Gradle Wrapper'ı (gradlew) Sistemden Üret
-          gradle wrapper --gradle-version 8.9
+          # 3. app/build.gradle.kts kontrolü ve oluşturulması
+          mkdir -p app
+          echo 'plugins { id("com.android.application") }' > app/build.gradle.kts
+          echo 'android {' >> app/build.gradle.kts
+          echo '    namespace = "com.liquidai.lfmtts"' >> app/build.gradle.kts
+          echo '    compileSdk = 35' >> app/build.gradle.kts
+          echo '    defaultConfig {' >> app/build.gradle.kts
+          echo '        applicationId = "com.liquidai.lfmtts"' >> app/build.gradle.kts
+          echo '        minSdk = 29' >> app/build.gradle.kts
+          echo '        targetSdk = 35' >> app/build.gradle.kts
+          echo '        versionCode = 1' >> app/build.gradle.kts
+          echo '        versionName = "1.0"' >> app/build.gradle.kts
+          echo '        ndk { abiFilters += listOf("arm64-v8a") }' >> app/build.gradle.kts
+          echo '        externalNativeBuild { cmake { cppFlags += listOf("-std=c++17", "-O3") } }' >> app/build.gradle.kts
+          echo '    }' >> app/build.gradle.kts
+          echo '    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }' >> app/build.gradle.kts
+          echo '    kotlinOptions { jvmTarget = "17" }' >> app/build.gradle.kts
+          echo '    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }' >> app/build.gradle.kts
+          echo '}' >> app/build.gradle.kts
+          echo 'dependencies { implementation("androidx.appcompat:appcompat:1.7.0"); implementation("androidx.core:core-ktx:1.13.1") }' >> app/build.gradle.kts
 
-      - name: APK Derle
+      - name: Gradle Wrapper Başlat ve APK Derle
         run: |
+          gradle wrapper --gradle-version 8.9
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon
 
