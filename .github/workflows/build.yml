@@ -1,3 +1,4 @@
+yaml
 name: Build LFM3 Audio TTS APK
 
 on:
@@ -9,195 +10,29 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
     steps:
+      # 1. Depoyu indir
       - name: Depoyu indir
         uses: actions/checkout@v4
 
+      # 2. Java 17
       - name: JDK kur
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Android SDK kur
-        uses: android-actions/setup-android@v3
-
-      - name: Android SDK paketlerini kur
-        run: |
-          sdkmanager --licenses
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "ndk;27.0.12077973" \
-            "cmake;3.22.1"
-
+      # 3. Gradle 8.9
       - name: Gradle kur
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
-      - name: llama.cpp kaynak kodunu indir
-        run: |
-          git clone https://github.com/ggml-org/llama.cpp.git \
-            app/src/main/cpp/llama.cpp
-
-      - name: Gradle ve Android proje dosyalarını oluştur
-        shell: bash
-        run: |
-          mkdir -p app/src/main/cpp app/src/main/java/com/liquidai/lfmtts
-
-          cat > gradle.properties <<'EOF'
-          android.useAndroidX=true
-          android.enableJetifier=true
-          EOF
-
-          cat > settings.gradle.kts <<'EOF'
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-
-          rootProject.name = "LFM3AudioTTS"
-          include(":app")
-          EOF
-
-          cat > build.gradle.kts <<'EOF'
-          plugins {
-              id("com.android.application") version "8.5.2" apply false
-              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
-          }
-          EOF
-
-          cat > app/build.gradle.kts <<'EOF'
-          plugins {
-              id("com.android.application")
-              id("org.jetbrains.kotlin.android")
-          }
-
-          android {
-              namespace = "com.liquidai.lfmtts"
-              compileSdk = 35
-
-              defaultConfig {
-                  applicationId = "com.liquidai.lfmtts"
-                  minSdk = 29
-                  targetSdk = 35
-                  versionCode = 1
-                  versionName = "1.0"
-
-                  ndk {
-                      abiFilters += "arm64-v8a"
-                  }
-
-                  externalNativeBuild {
-                      cmake {
-                          cppFlags += "-std=c++17"
-                      }
-                  }
-              }
-
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-
-              kotlinOptions {
-                  jvmTarget = "17"
-              }
-
-              externalNativeBuild {
-                  cmake {
-                      path = file("src/main/cpp/CMakeLists.txt")
-                      version = "3.22.1"
-                  }
-              }
-          }
-
-          dependencies {
-              implementation("androidx.appcompat:appcompat:1.7.0")
-              implementation("androidx.core:core-ktx:1.13.1")
-          }
-          EOF
-
-          cat > app/src/main/cpp/CMakeLists.txt <<'EOF'
-          cmake_minimum_required(VERSION 3.22.1)
-          project(lfm3_android LANGUAGES C CXX)
-
-          set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
-          set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
-          set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
-          set(LLAMA_OPENSSL OFF CACHE BOOL "" FORCE)
-          set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-
-          add_subdirectory(llama.cpp)
-          EOF
-
-          cat > app/src/main/java/com/liquidai/lfmtts/MainActivity.kt <<'EOF'
-          package com.liquidai.lfmtts
-
-          import android.app.Activity
-          import android.os.Bundle
-          import android.widget.TextView
-
-          class MainActivity : Activity() {
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-
-                  val message = TextView(this).apply {
-                      text = "LFM3 Audio TTS\n\n" +
-                          "APK başarıyla kuruldu.\n" +
-                          "Model ve TTS entegrasyonu henüz eklenmedi."
-                      textSize = 20f
-                      setPadding(32, 48, 32, 32)
-                  }
-
-                  setContentView(message)
-              }
-          }
-          EOF
-
-          cat > app/src/main/AndroidManifest.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <application
-                  android:allowBackup="false"
-                  android:label="LFM3 Audio TTS"
-                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
-
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          EOF
-
-      - name: Gradle Wrapper oluştur
-        run: gradle wrapper --gradle-version 8.9
-
-      - name: Debug APK derle
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
-
-      - name: APK dosyasını yükle
-        uses: actions/upload-artifact@v4
-        with:
-          name: LFM3-TTS-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+      # 4. Android SDK paketlerini doğrudan kur.
+      # setup-android eylemi kullanılmadığı için eski "tools
