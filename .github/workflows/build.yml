@@ -16,13 +16,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Android SDK ve NDK Otomatik Kurulum
+      - name: Android SDK ve NDK Kurulumu
         uses: android-actions/setup-android@v3
         with:
-          api-level: 35
-          build-tools: 35.0.0
-          ndk-version: 27.0.12077973
-          cmake-version: 3.22.1
+          packages: 'platforms;android-35 build-tools;35.0.0 ndk;27.0.12077973 cmake;3.22.1'
+          accept-android-sdk-licenses: true
 
       - name: llama.cpp Çek
         run: |
